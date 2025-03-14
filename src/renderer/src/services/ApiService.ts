@@ -2,7 +2,7 @@ import { getOpenAIWebSearchParams } from '@renderer/config/models'
 import i18n from '@renderer/i18n'
 import store from '@renderer/store'
 import { setGenerating } from '@renderer/store/runtime'
-import { Assistant, Message, Model, Provider, Suggestion } from '@renderer/types'
+import { Assistant, MCPTool, Message, Model, Provider, Suggestion } from '@renderer/types'
 import { formatMessageError, isAbortError } from '@renderer/utils/error'
 import { cloneDeep, findLast, isEmpty } from 'lodash'
 
@@ -33,12 +33,7 @@ export async function fetchChatCompletion({
   const provider = getAssistantProvider(assistant)
   const webSearchProvider = WebSearchService.getWebSearchProvider()
   const AI = new AiProvider(provider)
-
-  // store.dispatch(setGenerating(true))
-
-  // onResponse({ ...message })
-
-  // addAbortController(message.askId ?? message.id)
+  const lastUserMessage = findLast(messages, (m) => m.role === 'user')
 
   try {
     let _messages: Message[] = []
@@ -49,9 +44,8 @@ export async function fetchChatCompletion({
       const webSearchParams = getOpenAIWebSearchParams(assistant, assistant.model)
 
       if (isEmpty(webSearchParams)) {
-        const lastMessage = findLast(messages, (m) => m.role === 'user')
-        const hasKnowledgeBase = !isEmpty(lastMessage?.knowledgeBaseIds)
-        if (lastMessage) {
+        const hasKnowledgeBase = !isEmpty(lastUserMessage?.knowledgeBaseIds)
+        if (lastUserMessage) {
           if (hasKnowledgeBase) {
             window.message.info({
               content: i18n.t('message.ignore.knowledge.base'),
@@ -59,17 +53,24 @@ export async function fetchChatCompletion({
             })
           }
           onResponse({ ...message, status: 'searching' })
-          const webSearch = await WebSearchService.search(webSearchProvider, lastMessage.content)
+          const webSearch = await WebSearchService.search(webSearchProvider, lastUserMessage.content)
           message.metadata = {
             ...message.metadata,
             webSearch: webSearch
           }
-          window.keyv.set(`web-search-${lastMessage?.id}`, webSearch)
+          window.keyv.set(`web-search-${lastUserMessage?.id}`, webSearch)
         }
       }
     }
 
-    const allMCPTools = await window.api.mcp.listTools()
+    // Get MCP tools
+    let mcpTools: MCPTool[] = []
+    const enabledMCPs = lastUserMessage?.enabledMCPs
+
+    if (enabledMCPs) {
+      const allMCPTools = await window.api.mcp.listTools()
+      mcpTools = allMCPTools.filter((tool) => enabledMCPs.some((mcp) => mcp.name === tool.serverName))
+    }
 
     await AI.completions({
       messages: filterUsefulMessages(messages),
@@ -103,7 +104,7 @@ export async function fetchChatCompletion({
 
         onResponse({ ...message, status: 'pending' })
       },
-      mcpTools: allMCPTools
+      mcpTools
     })
 
     message.status = 'success'
