@@ -132,6 +132,18 @@ const Inputbar: FC<Props> = ({ assistant: _assistant, setActiveTopic, topic }) =
   _text = text
   _files = files
 
+  const resizeTextArea = useCallback(() => {
+    const textArea = textareaRef.current?.resizableTextArea?.textArea
+    if (textArea) {
+      // 如果已经手动设置了高度,则不自动调整
+      if (textareaHeight) {
+        return
+      }
+      textArea.style.height = 'auto'
+      textArea.style.height = textArea?.scrollHeight > 400 ? '400px' : `${textArea?.scrollHeight}px`
+    }
+  }, [textareaHeight])
+
   const sendMessage = useCallback(async () => {
     if (inputEmpty || loading) {
       return
@@ -174,7 +186,19 @@ const Inputbar: FC<Props> = ({ assistant: _assistant, setActiveTopic, topic }) =
     } catch (error) {
       console.error('Failed to send message:', error)
     }
-  }, [inputEmpty, files, dispatch, text, assistant, topic, selectedKnowledgeBases, mentionModels, enabledMCPs, loading])
+  }, [
+    assistant,
+    dispatch,
+    enabledMCPs,
+    files,
+    inputEmpty,
+    loading,
+    mentionModels,
+    resizeTextArea,
+    selectedKnowledgeBases,
+    text,
+    topic
+  ])
 
   const translate = async () => {
     if (isTranslating) {
@@ -318,18 +342,6 @@ const Inputbar: FC<Props> = ({ assistant: _assistant, setActiveTopic, topic }) =
     EventEmitter.emit(EVENT_NAMES.NEW_CONTEXT)
   }
 
-  const resizeTextArea = () => {
-    const textArea = textareaRef.current?.resizableTextArea?.textArea
-    if (textArea) {
-      // 如果已经手动设置了高度,则不自动调整
-      if (textareaHeight) {
-        return
-      }
-      textArea.style.height = 'auto'
-      textArea.style.height = textArea?.scrollHeight > 400 ? '400px' : `${textArea?.scrollHeight}px`
-    }
-  }
-
   const onToggleExpended = () => {
     const isExpended = !expended
     setExpend(isExpended)
@@ -384,6 +396,11 @@ const Inputbar: FC<Props> = ({ assistant: _assistant, setActiveTopic, topic }) =
               const selectedFile = await window.api.file.get(tempFilePath)
               selectedFile && setFiles((prevFiles) => [...prevFiles, selectedFile])
               break
+            } else {
+              window.message.info({
+                key: 'file_not_supported',
+                content: t('chat.input.file_not_supported')
+              })
             }
           }
 
